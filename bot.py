@@ -75,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "E eu devolvo com seu ID de afiliado embutido!\n\n"
         "Use /ajuda para mais informações."
     )
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await update.message.reply_text(mensagem, )
 
 async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensagem = (
@@ -86,7 +86,7 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 *Plataforma:* mlm.net.br\n"
         "Cadastre-se em mlm.net.br para obter seu ID de afiliado."
     )
-    await update.message.reply_text(mensagem, parse_mode="Markdown")
+    await update.message.reply_text(mensagem, )
 
 async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text or ""
@@ -106,9 +106,9 @@ async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE)
     qtd = len(links)
     plural = "link convertido" if qtd == 1 else "links convertidos"
 
-    resposta = f"✅ *{qtd} {plural}!*\n\n{texto_convertido}"
+    resposta = f"✅ {qtd} {plural}!\n\n{texto_convertido}"
 
-    await update.message.reply_text(resposta, parse_mode="Markdown")
+    await update.message.reply_text(resposta)
 
 # ── Inicialização ────────────────────────────────────────────────────────────
 def main():
