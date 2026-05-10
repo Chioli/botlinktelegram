@@ -9,7 +9,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 # ── Configurações ────────────────────────────────────────────────────────────
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-AFILIADO_ID = os.environ.get("AFILIADO_ID", "chioli")
+AFILIADO_ID = os.environ.get("AFILIADO_ID", "mecanicachioli")
 PORT = int(os.environ.get("PORT", 8080))
 
 if not TOKEN:
