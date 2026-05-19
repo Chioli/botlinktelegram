@@ -4,7 +4,6 @@ import logging
 import threading
 import asyncio
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
-import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -67,22 +66,11 @@ def eh_link_ml(url: str) -> bool:
 def adicionar_afiliado(url: str, afiliado_id: str) -> str:
     try:
         parsed = urlparse(url)
-        params = parse_qs(parsed.query, keep_blank_values=True)
-        for p in ["affId", "matt_word", "matt_tool", "matt_source", "matt_campaign", "ref", "forceInApp"]:
-            params.pop(p, None)
-        params["matt_word"] = [afiliado_id]
-        nova_query = urlencode({k: v[0] for k, v in params.items()})
-        return urlunparse(parsed._replace(query=nova_query))
+        # Mantém só o essencial: path + matt_word
+        nova_query = urlencode({"matt_word": afiliado_id})
+        return urlunparse(parsed._replace(query=nova_query, fragment=""))
     except Exception:
         return url
-
-def encurtar_link(url: str) -> str:
-    try:
-        api = f"https://tinyurl.com/api-create.php?url={urllib.request.quote(url, safe='')}"
-        with urllib.request.urlopen(api, timeout=5) as r:
-            return r.read().decode("utf-8").strip()
-    except Exception:
-        return url  # Se falhar, retorna o link original
 
 def extrair_e_converter_links(texto: str, afiliado_id: str):
     regex = r"https?://[^\s<>\"']+"
@@ -92,7 +80,6 @@ def extrair_e_converter_links(texto: str, afiliado_id: str):
     for link in links_encontrados:
         if eh_link_ml(link):
             novo_link = adicionar_afiliado(link, afiliado_id)
-            novo_link = encurtar_link(novo_link)
             texto_final = texto_final.replace(link, novo_link)
             links_convertidos.append((link, novo_link))
     return texto_final, links_convertidos
