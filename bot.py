@@ -4,6 +4,7 @@ import logging
 import threading
 import asyncio
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -75,6 +76,14 @@ def adicionar_afiliado(url: str, afiliado_id: str) -> str:
     except Exception:
         return url
 
+def encurtar_link(url: str) -> str:
+    try:
+        api = f"https://tinyurl.com/api-create.php?url={urllib.request.quote(url, safe='')}"
+        with urllib.request.urlopen(api, timeout=5) as r:
+            return r.read().decode("utf-8").strip()
+    except Exception:
+        return url  # Se falhar, retorna o link original
+
 def extrair_e_converter_links(texto: str, afiliado_id: str):
     regex = r"https?://[^\s<>\"']+"
     links_encontrados = re.findall(regex, texto)
@@ -83,6 +92,7 @@ def extrair_e_converter_links(texto: str, afiliado_id: str):
     for link in links_encontrados:
         if eh_link_ml(link):
             novo_link = adicionar_afiliado(link, afiliado_id)
+            novo_link = encurtar_link(novo_link)
             texto_final = texto_final.replace(link, novo_link)
             links_convertidos.append((link, novo_link))
     return texto_final, links_convertidos
