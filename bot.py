@@ -73,7 +73,11 @@ async def gerar_link_com_cookie(session, url):
         "Origin": "https://www.mercadolivre.com.br",
         "X-Csrf-Token": csrf,
     }
-    payload = {"urls": [url]}
+    # Limpar URL removendo parâmetros de rastreamento desnecessários
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    url_limpa = urlunparse(parsed._replace(query="", fragment=""))
+    payload = {"urls": [url_limpa], "tag": AFILIADO_ID}
     async with session.post(ML_API, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as r:
         if r.status == 200:
             data = await r.json()
