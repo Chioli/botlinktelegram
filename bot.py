@@ -20,14 +20,18 @@ if not TOKEN:
 if not ML_COOKIE:
     raise ValueError("Configure ML_COOKIE nas variáveis de ambiente!")
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-ML_API = "https://www.mercadolivre.com.br/afiliados/link"
+ML_API = "https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates/createLink"
 
-# ── Servidor HTTP (keep alive Render) ────────────────────────────────────────
+def extrair_csrf(cookie):
+    for parte in cookie.split(";"):
+        parte = parte.strip()
+        if parte.startswith("_csrf="):
+            return parte.split("=", 1)[1]
+    return ""
+
+# ── Servidor HTTP keep alive ──────────────────────────────────────────────────
 class KeepAlive(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -50,12 +54,7 @@ def iniciar_servidor():
     HTTPServer(("0.0.0.0", PORT), KeepAlive).serve_forever()
 
 # ── Funções de link ──────────────────────────────────────────────────────────
-DOMINIOS_ML = [
-    "mercadolivre.com.br",
-    "mercadolibre.com",
-    "ml.com.br",
-    "produto.mercadolivre.com.br",
-]
+DOMINIOS_ML = ["mercadolivre.com.br", "mercadolibre.com", "ml.com.br", "produto.mercadolivre.com.br"]
 
 def eh_link_ml(url):
     try:
@@ -64,33 +63,35 @@ def eh_link_ml(url):
     except:
         return False
 
-async def gerar_link_com_cookie(url):
+async def gerar_link_com_cookie(session, url):
+    csrf = extrair_csrf(ML_COOKIE)
     headers = {
         "Cookie": ML_COOKIE,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
         "Content-Type": "application/json",
-        "Referer": "https://www.mercadolivre.com.br/",
+        "Referer": "https://www.mercadolivre.com.br/afiliados/linkbuilder",
         "Origin": "https://www.mercadolivre.com.br",
+        "X-Csrf-Token": csrf,
     }
-    async with aiohttp.ClientSession() as session:
-        async with session.post(ML_API, json={"url": url}, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as r:
-            if r.status == 200:
-                data = await r.json()
-                link = data.get("shortUrl") or data.get("url") or data.get("link")
-                if link:
-                    logging.info("Link gerado com sucesso via cookie")
-                    return link, None
-            logging.warning(f"Cookie retornou status {r.status}")
-            return None, f"⚠️ Cookie expirado ou inválido (status {r.status}). Atualize ML_COOKIE no Render!"
+    payload = {"urls": [url]}
+    async with session.post(ML_API, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as r:
+        if r.status == 200:
+            data = await r.json()
+            urls = data.get("urls", [])
+            if urls and urls[0].get("short_url"):
+                logging.info("Link gerado com sucesso!")
+                return urls[0]["short_url"], None
+        logging.warning(f"API retornou status {r.status}")
+        return None, f"⚠️ Cookie expirado ou inválido (status {r.status}). Atualize ML_COOKIE no Render!"
 
-async def converter_links(texto):
+async def converter_links(session, texto):
     links = re.findall(r"https?://[^\s<>\"']+", texto)
     texto_final = texto
     convertidos = []
     erro = None
     for link in links:
         if eh_link_ml(link):
-            novo, err = await gerar_link_com_cookie(link)
+            novo, err = await gerar_link_com_cookie(session, link)
             if novo:
                 texto_final = texto_final.replace(link, novo)
                 convertidos.append(novo)
@@ -121,7 +122,8 @@ async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not texto.strip():
         return
 
-    texto_convertido, links, erro = await converter_links(texto)
+    async with aiohttp.ClientSession() as session:
+        texto_convertido, links, erro = await converter_links(session, texto)
 
     if erro:
         await update.message.reply_text(erro)
