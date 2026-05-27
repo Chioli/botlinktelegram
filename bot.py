@@ -11,7 +11,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 # ── Configurações ────────────────────────────────────────────────────────────
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-AFILIADO_ID = os.environ.get("AFILIADO_ID", "chiolimecanica")
+AFILIADO_ID = os.environ.get("AFILIADO_ID", "mecanicachioli")
 ML_COOKIE = os.environ.get("ML_COOKIE", "")
 PORT = int(os.environ.get("PORT", 8080))
 
