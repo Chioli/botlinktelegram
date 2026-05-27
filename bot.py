@@ -3,23 +3,29 @@ import re
 import logging
 import threading
 import asyncio
-from urllib.parse import urlparse, urlencode, urlunparse
+from urllib.parse import urlparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import aiohttp
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ── Configurações ────────────────────────────────────────────────────────────
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 AFILIADO_ID = os.environ.get("AFILIADO_ID", "chioli")
+ML_COOKIE = os.environ.get("ML_COOKIE", "")
 PORT = int(os.environ.get("PORT", 8080))
 
 if not TOKEN:
     raise ValueError("Configure TELEGRAM_TOKEN nas variáveis de ambiente!")
+if not ML_COOKIE:
+    raise ValueError("Configure ML_COOKIE nas variáveis de ambiente!")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
+
+ML_API = "https://www.mercadolivre.com.br/afiliados/link"
 
 # ── Servidor HTTP (keep alive Render) ────────────────────────────────────────
 class KeepAlive(BaseHTTPRequestHandler):
@@ -58,24 +64,40 @@ def eh_link_ml(url):
     except:
         return False
 
-def adicionar_afiliado(url):
-    try:
-        parsed = urlparse(url)
-        nova_query = urlencode({"matt_word": AFILIADO_ID})
-        return urlunparse(parsed._replace(query=nova_query, fragment=""))
-    except:
-        return url
+async def gerar_link_com_cookie(url):
+    headers = {
+        "Cookie": ML_COOKIE,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Content-Type": "application/json",
+        "Referer": "https://www.mercadolivre.com.br/",
+        "Origin": "https://www.mercadolivre.com.br",
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(ML_API, json={"url": url}, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as r:
+            if r.status == 200:
+                data = await r.json()
+                link = data.get("shortUrl") or data.get("url") or data.get("link")
+                if link:
+                    logging.info("Link gerado com sucesso via cookie")
+                    return link, None
+            logging.warning(f"Cookie retornou status {r.status}")
+            return None, f"⚠️ Cookie expirado ou inválido (status {r.status}). Atualize ML_COOKIE no Render!"
 
-def converter_links(texto):
+async def converter_links(texto):
     links = re.findall(r"https?://[^\s<>\"']+", texto)
     texto_final = texto
     convertidos = []
+    erro = None
     for link in links:
         if eh_link_ml(link):
-            novo = adicionar_afiliado(link)
-            texto_final = texto_final.replace(link, novo)
-            convertidos.append(novo)
-    return texto_final, convertidos
+            novo, err = await gerar_link_com_cookie(link)
+            if novo:
+                texto_final = texto_final.replace(link, novo)
+                convertidos.append(novo)
+            else:
+                erro = err
+                break
+    return texto_final, convertidos, erro
 
 # ── Handlers do bot ──────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,20 +112,28 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Ajuda — Bot de Afiliado ML\n\n"
         "• Envie um link do Mercado Livre e receba o link com seu ID de afiliado\n"
         "• Pode enviar texto completo com vários links — todos serão convertidos\n"
-        "• Links de outros sites são ignorados"
+        "• Links de outros sites são ignorados\n"
+        "• Se o cookie expirar você receberá um aviso aqui"
     )
 
 async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text or ""
     if not texto.strip():
         return
-    texto_convertido, links = converter_links(texto)
+
+    texto_convertido, links, erro = await converter_links(texto)
+
+    if erro:
+        await update.message.reply_text(erro)
+        return
+
     if not links:
         await update.message.reply_text(
             "⚠️ Nenhum link do Mercado Livre encontrado.\n"
             "Envie um link válido do ML para eu converter!"
         )
         return
+
     qtd = len(links)
     plural = "link convertido" if qtd == 1 else "links convertidos"
     await update.message.reply_text(f"✅ {qtd} {plural}!\n\n{texto_convertido}")
